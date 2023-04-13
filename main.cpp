@@ -1,46 +1,3 @@
-//==============================================================================
-/*
-    Software License Agreement (BSD License)
-    Copyright (c) 2003-2016, CHAI3D.
-    (www.chai3d.org)
-
-    All rights reserved.
-
-    Redistribution and use in source and binary forms, with or without
-    modification, are permitted provided that the following conditions
-    are met:
-
-    * Redistributions of source code must retain the above copyright
-    notice, this list of conditions and the following disclaimer.
-
-    * Redistributions in binary form must reproduce the above
-    copyright notice, this list of conditions and the following
-    disclaimer in the documentation and/or other materials provided
-    with the distribution.
-
-    * Neither the name of CHAI3D nor the names of its contributors may
-    be used to endorse or promote products derived from this software
-    without specific prior written permission.
-
-    THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-    "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-    LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS
-    FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE
-    COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT,
-    INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING,
-    BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
-    LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
-    CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
-    LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN
-    ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
-    POSSIBILITY OF SUCH DAMAGE.
-
-    \author    <http://www.chai3d.org>
-    \author    Francois Conti
-    \version   3.2.0 $Rev: 1869 $
-*/
-//==============================================================================
-
 //------------------------------------------------------------------------------
 #include "cHeroTool.h"
 //------------------------------------------------------------------------------
@@ -63,6 +20,20 @@ using namespace std;
 */
 cStereoMode stereoMode = C_STEREO_DISABLED;
 
+
+enum MouseStates
+{
+    MOUSE_IDLE,
+    MOUSE_MOVE_CAMERA
+};
+
+enum HapticStates
+{
+    HAPTIC_IDLE,
+    HAPTIC_SELECTION
+};
+
+
 // fullscreen mode
 bool fullscreen = false;
 
@@ -76,6 +47,9 @@ bool mirroredDisplay = false;
 
 // a world that contains all objects of the virtual environment
 cWorld* world;
+
+//
+cHeroTool* tool;
 
 // a camera to render the world in the window display
 cCamera* camera;
@@ -107,28 +81,9 @@ cFontPtr font;
 // a label to display the rate [Hz] at which the simulation is running
 cLabel* labelRates;
 
-// a small sphere (cursor) representing the haptic device
-cShapeSphere* cursor;
-
 // a line representing the velocity of the haptic device
 cShapeLine* velocity;
 
-// a scope to monitor position values of haptic device
-cScope* scope;
-
-// a level widget to display velocity
-cLevel* levelVelocity;
-
-// three dials to display position information
-cDial* dialPosX;
-cDial* dialPosY;
-cDial* dialPosZ;
-
-// a flag for using damping (ON/OFF)
-bool useDamping = false;
-
-// a flag for using force field (ON/OFF)
-bool useForceField = true;
 
 // a flag to indicate if the haptic simulation currently running
 bool simulationRunning = false;
@@ -141,6 +96,12 @@ cFrequencyCounter freqCounterGraphics;
 
 // a frequency counter to measure the simulation haptic rate
 cFrequencyCounter freqCounterHaptics;
+
+// mouse state
+MouseStates mouseState = MOUSE_IDLE;
+
+// last mouse position
+double mouseX, mouseY;
 
 // haptic thread
 cThread* hapticsThread;
@@ -171,6 +132,16 @@ void errorCallback(int error, const char* a_description);
 // callback when a key is pressed
 void keyCallback(GLFWwindow* a_window, int a_key, int a_scancode, int a_action, int a_mods);
 
+// callback to handle mouse click
+void mouseButtonCallback(GLFWwindow* a_window, int a_button, int a_action, int a_mods);
+
+// callback to handle mouse motion
+void mouseMotionCallback(GLFWwindow* a_window, double a_posX, double a_posY);
+
+// callback to handle mouse scroll
+void mouseScrollCallback(GLFWwindow* a_window, double a_offsetX, double a_offsetY);
+
+
 // this function renders the scene
 void updateGraphics(void);
 
@@ -179,20 +150,6 @@ void updateHaptics(void);
 
 // this function closes the application
 void close(void);
-
-
-//==============================================================================
-/*
-    DEMO:   03-analytics.cpp
-
-    This application illustrates how to program forces, torques and gripper
-    forces to your haptic device.
-
-    In this example the application opens an OpenGL window and displays a
-    3D cursor for the device connected to your computer. Several widgets are
-    used to demonstrate several possible approaches for to display signal data.
-*/
-//==============================================================================
 
 int main(int argc, char* argv[])
 {
@@ -273,6 +230,15 @@ int main(int argc, char* argv[])
     // set resize callback
     glfwSetWindowSizeCallback(window, windowSizeCallback);
 
+    // set mouse position callback
+    glfwSetCursorPosCallback(window, mouseMotionCallback);
+
+    // set mouse button callback
+    glfwSetMouseButtonCallback(window, mouseButtonCallback);
+
+    // set mouse scroll callback
+    glfwSetScrollCallback(window, mouseScrollCallback);
+
     // set current display context
     glfwMakeContextCurrent(window);
 
@@ -334,12 +300,6 @@ int main(int argc, char* argv[])
     // define direction of light beam
     light->setDir(-1.0, 0.0, 0.0);
 
-    // create a sphere (cursor) to represent the haptic device
-    cursor = new cShapeSphere(0.01);
-
-    // insert cursor inside world
-    world->addChild(cursor);
-
     // create small line to illustrate the velocity of the haptic device
     velocity = new cShapeLine(cVector3d(0,0,0), cVector3d(0,0,0));
 
@@ -363,19 +323,11 @@ int main(int argc, char* argv[])
     // retrieve information about the current haptic device
     cHapticDeviceInfo info = hapticDevice->getSpecifications();
 
-    // if the haptic device provides orientation sensing (stylus),
-    // a reference frame is displayed
-    if (info.m_sensedRotation == true)
-    {
-        // display a reference frame
-        cursor->setShowFrame(true);
-
-        // set the size of the reference frame
-        cursor->setFrameSize(0.05);
-    }
-
-    // if the device has a gripper, enable the gripper to behave like a user switch
-    hapticDevice->setEnableGripperUserSwitch(true);
+    // create the tool
+    tool = new cHeroTool(hapticDevice);
+    tool->clusterMesh();
+    world->addChild(tool);
+    tool->scale(0.01);
 
 
     //--------------------------------------------------------------------------
@@ -397,58 +349,6 @@ int main(int argc, char* argv[])
     // create a label to display the haptic and graphic rate of the simulation
     labelRates = new cLabel(font);
     camera->m_frontLayer->addChild(labelRates);
-
-
-    ////////////////////////////////////////////////////////////////////////////
-    // In the following lines we set up several widgets to display position
-    // and velocity data coming from the haptic device. For each widget we
-    // define a range of values to expect from the haptic device. In this
-    // example the units are meters (as we are tracking a position signal!) and
-    // have a set a default range between -0.1 to 0.1 meters. If you are using
-    // devices with a small or larger workspace, you may want to adjust these
-    // values accordingly. The other settings will modify the visual appearance
-    // of the widgets. Have fun playing with these values!
-    ////////////////////////////////////////////////////////////////////////////
-
-    // create a scope to plot haptic device position data
-    scope = new cScope();
-    camera->m_frontLayer->addChild(scope);
-    scope->setLocalPos(100,60);
-    scope->setRange(-0.1, 0.1);
-    scope->setSignalEnabled(true, true, true, false);
-    scope->setTransparencyLevel(0.7);
-
-    // create a level to display velocity data
-    levelVelocity = new cLevel();
-    camera->m_frontLayer->addChild(levelVelocity);
-    levelVelocity->setLocalPos(20, 60);
-    levelVelocity->setRange(0.0, 1.0);
-    levelVelocity->setWidth(40);
-    levelVelocity->setNumIncrements(46);
-    levelVelocity->setSingleIncrementDisplay(false);
-    levelVelocity->setTransparencyLevel(0.5);
-
-    // three dials to display position data
-    dialPosX = new cDial();
-    camera->m_frontLayer->addChild(dialPosX);
-    dialPosX->setLocalPos(750, 200);
-    dialPosX->setRange(-0.1, 0.1);
-    dialPosX->setSize(40);
-    dialPosX->setSingleIncrementDisplay(true);
-
-    dialPosY = new cDial();
-    camera->m_frontLayer->addChild(dialPosY);
-    dialPosY->setLocalPos(750, 140);
-    dialPosY->setRange(-0.1, 0.1);
-    dialPosY->setSize(40);
-    dialPosY->setSingleIncrementDisplay(true);
-
-    dialPosZ = new cDial();
-    camera->m_frontLayer->addChild(dialPosZ);
-    dialPosZ->setLocalPos(750, 80);
-    dialPosZ->setRange(-0.1, 0.1);
-    dialPosZ->setSize(40);
-    dialPosZ->setSingleIncrementDisplay(true);
 
     //--------------------------------------------------------------------------
     // START SIMULATION
@@ -511,13 +411,6 @@ void windowSizeCallback(GLFWwindow* a_window, int a_width, int a_height)
     // update position of label
     labelHapticDeviceModel->setLocalPos(20, height - 40, 0);
 
-    // update position of scope
-    scope->setSize(width - 200, 180);
-
-    // update position of dials
-    dialPosX->setLocalPos(width - 50, 210);
-    dialPosY->setLocalPos(width - 50, 150);
-    dialPosZ->setLocalPos(width - 50, 90);
 }
 
 //------------------------------------------------------------------------------
@@ -546,21 +439,13 @@ void keyCallback(GLFWwindow* a_window, int a_key, int a_scancode, int a_action, 
     // option - enable/disable force field
     if (a_key == GLFW_KEY_1)
     {
-        useForceField = !useForceField;
-        if (useForceField)
-            cout << "> Enable force field     \r";
-        else
-            cout << "> Disable force field    \r";
+
     }
 
     // option - enable/disable damping
     if (a_key == GLFW_KEY_2)
     {
-        useDamping = !useDamping;
-        if (useDamping)
-            cout << "> Enable damping         \r";
-        else
-            cout << "> Disable damping        \r";
+
     }
 
     // option - toggle fullscreen
@@ -600,6 +485,59 @@ void keyCallback(GLFWwindow* a_window, int a_key, int a_scancode, int a_action, 
     }
 }
 
+
+//------------------------------------------------------------------------------
+
+void mouseButtonCallback(GLFWwindow* a_window, int a_button, int a_action, int a_mods)
+{
+    if (a_button == GLFW_MOUSE_BUTTON_RIGHT && a_action == GLFW_PRESS)
+    {
+        // store mouse position
+        glfwGetCursorPos(window, &mouseX, &mouseY);
+
+        // update mouse state
+        mouseState = MOUSE_MOVE_CAMERA;
+    }
+
+    else
+    {
+        // update mouse state
+        mouseState = MOUSE_IDLE;
+    }
+}
+
+//------------------------------------------------------------------------------
+
+void mouseMotionCallback(GLFWwindow* a_window, double a_posX, double a_posY)
+{
+    if (mouseState == MOUSE_MOVE_CAMERA)
+    {
+        // compute mouse motion
+        int dx = a_posX - mouseX;
+        int dy = a_posY - mouseY;
+        mouseX = a_posX;
+        mouseY = a_posY;
+
+        // compute new camera angles
+        double azimuthDeg = camera->getSphericalAzimuthDeg() - 0.5 * dx;
+        double polarDeg = camera->getSphericalPolarDeg() - 0.5 * dy;
+
+        // assign new angles
+        camera->setSphericalAzimuthDeg(azimuthDeg);
+        camera->setSphericalPolarDeg(polarDeg);
+
+    }
+}
+
+//------------------------------------------------------------------------------
+
+void mouseScrollCallback(GLFWwindow* a_window, double a_offsetX, double a_offsetY)
+{
+    double r = camera->getSphericalRadius();
+    r = cClamp(r + 0.1 * a_offsetY, 0.5, 3.0);
+    camera->setSphericalRadius(r);
+}
+
 //------------------------------------------------------------------------------
 
 void close(void)
@@ -637,19 +575,6 @@ void updateGraphics(void)
     // update position of label
     labelRates->setLocalPos((int)(0.5 * (width - labelRates->getWidth())), 15);
 
-    // update information to scope
-    scope->setSignalValues(hapticDevicePosition.x(),
-                           hapticDevicePosition.y(),
-                           hapticDevicePosition.z());
-
-    // update information to dials
-    dialPosX->setValue(hapticDevicePosition.x());
-    dialPosY->setValue(hapticDevicePosition.y());
-    dialPosZ->setValue(hapticDevicePosition.z());
-
-    // update velocity information to level
-    levelVelocity->setValue(hapticDeviceVelocity.length());
-
 
     /////////////////////////////////////////////////////////////////////
     // RENDER SCENE
@@ -681,134 +606,6 @@ void updateHaptics(void)
     // main haptic simulation loop
     while(simulationRunning)
     {
-        /////////////////////////////////////////////////////////////////////
-        // READ HAPTIC DEVICE
-        /////////////////////////////////////////////////////////////////////
-
-        // read position
-        cVector3d position;
-        hapticDevice->getPosition(position);
-
-        // read orientation
-        cMatrix3d rotation;
-        hapticDevice->getRotation(rotation);
-
-        // read gripper position
-        double gripperAngle;
-        hapticDevice->getGripperAngleRad(gripperAngle);
-
-        // read linear velocity
-        cVector3d linearVelocity;
-        hapticDevice->getLinearVelocity(linearVelocity);
-
-        // read angular velocity
-        cVector3d angularVelocity;
-        hapticDevice->getAngularVelocity(angularVelocity);
-
-        // read gripper angular velocity
-        double gripperAngularVelocity;
-        hapticDevice->getGripperAngularVelocity(gripperAngularVelocity);
-
-        // read user-switch status (button 0)
-        bool button0, button1, button2, button3;
-        button0 = false;
-        button1 = false;
-        button2 = false;
-        button3 = false;
-
-        hapticDevice->getUserSwitch(0, button0);
-        hapticDevice->getUserSwitch(1, button1);
-        hapticDevice->getUserSwitch(2, button2);
-        hapticDevice->getUserSwitch(3, button3);
-
-
-        /////////////////////////////////////////////////////////////////////
-        // UPDATE 3D CURSOR MODEL
-        /////////////////////////////////////////////////////////////////////
-
-        // update arrow
-        velocity->m_pointA = position;
-        velocity->m_pointB = cAdd(position, linearVelocity);
-
-        // update position and orientation of cursor
-        cursor->setLocalPos(position);
-        cursor->setLocalRot(rotation);
-
-        // adjust the  color of the cursor according to the status of
-        // the user-switch (ON = TRUE / OFF = FALSE)
-        if (button0)
-        {
-            cursor->m_material->setGreenMediumAquamarine();
-        }
-        else if (button1)
-        {
-            cursor->m_material->setYellowGold();
-        }
-        else if (button2)
-        {
-            cursor->m_material->setOrangeCoral();
-        }
-        else if (button3)
-        {
-            cursor->m_material->setPurpleLavender();
-        }
-        else
-        {
-            cursor->m_material->setBlueRoyal();
-        }
-
-        // update global variable for graphic display update
-        hapticDevicePosition = position;
-        hapticDeviceVelocity = linearVelocity;
-
-
-        /////////////////////////////////////////////////////////////////////
-        // COMPUTE AND APPLY FORCES
-        /////////////////////////////////////////////////////////////////////
-
-        cVector3d force (0,0,0);
-        cVector3d torque (0,0,0);
-        double gripperForce = 0.0;
-
-        // apply force field
-        if (useForceField)
-        {
-            // compute linear force
-            double Kp = 25; // [N/m]
-            cVector3d forceField = -Kp * position;
-            force.add(forceField);
-
-            // compute angular torque
-            double Kr = 0.05; // [N/m.rad]
-            cVector3d axis;
-            double angle;
-            rotation.toAxisAngle(axis, angle);
-            torque = (-Kr * angle) * axis;
-        }
-
-        // apply damping term
-        if (useDamping)
-        {
-            cHapticDeviceInfo info = hapticDevice->getSpecifications();
-
-            // compute linear damping force
-            double Kv = 1.0 * info.m_maxLinearDamping;
-            cVector3d forceDamping = -Kv * linearVelocity;
-            force.add(forceDamping);
-
-            // compute angular damping force
-            double Kvr = 1.0 * info.m_maxAngularDamping;
-            cVector3d torqueDamping = -Kvr * angularVelocity;
-            torque.add(torqueDamping);
-
-            // compute gripper angular damping force
-            double Kvg = 1.0 * info.m_maxGripperAngularDamping;
-            gripperForce = gripperForce - Kvg * gripperAngularVelocity;
-        }
-
-        // send computed force, torque, and gripper force to haptic device
-        hapticDevice->setForceAndTorqueAndGripperForce(force, torque, gripperForce);
-
         // update frequency counter
         freqCounterHaptics.signal(1);
     }

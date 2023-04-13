@@ -2,47 +2,25 @@
 #define CHEROTOOL_CHEROTOOL_H
 
 #include "chai3d.h"
+#include "cOBB.h"
+#include "external/hierarchical-face-clustering/ClusteringAlgorithm.h"
+
+#include <vector>
 
 using namespace chai3d;
-
-class OBB {
-public:
-    cVector3d m_position;      // position of the OBB center
-    cMatrix3d m_orientation;   // orientation matrix of the OBB
-    cVector3d m_dimensions;    // dimensions of the OBB
-
-    // constructor
-    OBB(const cVector3d& position, const cMatrix3d& orientation, const cVector3d& dimensions)
-            : m_position(position), m_orientation(orientation), m_dimensions(dimensions) {}
-
-    // compute the vertices of the OBB
-    std::vector<cVector3d> vertices() const {
-        std::vector<cVector3d> verts;
-        verts.reserve(8);
-        const double& x = m_dimensions.x();
-        const double& y = m_dimensions.y();
-        const double& z = m_dimensions.z();
-        verts.push_back(m_position + m_orientation * cVector3d(-x, -y, -z) / 2.0);
-        verts.push_back(m_position + m_orientation * cVector3d(x, -y, -z) / 2.0);
-        verts.push_back(m_position + m_orientation * cVector3d(-x, y, -z) / 2.0);
-        verts.push_back(m_position + m_orientation * cVector3d(x, y, -z) / 2.0);
-        verts.push_back(m_position + m_orientation * cVector3d(-x, -y, z) / 2.0);
-        verts.push_back(m_position + m_orientation * cVector3d(x, -y, z) / 2.0);
-        verts.push_back(m_position + m_orientation * cVector3d(-x, y, z) / 2.0);
-        verts.push_back(m_position + m_orientation * cVector3d(x, y, z) / 2.0);
-        return verts;
-    }
-};
-
+using namespace std;
 
 class cHeroTool : public cMultiMesh
 {
+public:
+
     cHeroTool(cGenericHapticDevicePtr a_device)
     {
         m_device = a_device;
         m_force = cVector3d(0,0,0);
         m_torque = cVector3d(0,0,0);
         m_gripper_force = 0;
+        m_obbTree = new OBB(cVector3d(), cMatrix3d(), cVector3d() );
         updateDevicePosition();
     }
 
@@ -63,13 +41,17 @@ public:
     bool start(void);
 
     // this function updates the force
-    void setForceTorqueAndGripperForce(const cVector3d&, const cVector3d&, const double&);
+    void setForceAndTorqueAndGripperForce(const cVector3d&, const cVector3d&, const double&);
 
     // this function sets the scale factor
     void setScaleFactor(double a_scale);
 
-    // this function creates an OBB BVH
-    void computeTriangleMeshOBB(cMultiMesh* multimesh, OBB& obb);
+    // this function builds the OBB tree
+    void buildOBBTree(void);
+
+    // this function partitions the triangle mesh
+    void clusterMesh(void);
+
 
 public:
 
@@ -101,7 +83,18 @@ public:
     double m_gripper_force;
 
     // the scale factor
-    double m_scaleFactor = 4;
+    double m_scaleFactor = 1;
+
+    // the oriented boundng box tree
+    OBB* m_obbTree;
+
+public:
+
+    // the vector od clusters
+    vector<vector<int>> m_clusters;
+
+    // boolean flag if true
+    bool m_visualizeClusters = true;
 
 };
 

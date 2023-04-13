@@ -5,6 +5,8 @@ set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CUDA_ARCHITECTURES 61)
 set(CMAKE_CUDA_COMPILER /usr/local/cuda/bin/nvcc)
 
+#OpenGL
+set(OpenGL_GL_PREFERENCE "GLVND")
 
 #CHAI-3D
 FIND_PACKAGE(CHAI3D REQUIRED CONFIG)
@@ -42,12 +44,23 @@ if (EXISTS ${PROJECT_SOURCE_DIR}/extras/GLFW)
     add_subdirectory (${PROJECT_SOURCE_DIR}/extras/GLFW)
 endif ()
 
-
 #EIGEN3
 find_package(Eigen3 3.3 REQUIRED NO_MODULE)
 set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -D__CUDACC__")
 
-add_library(cHeroTool cHeroTool.cpp cHeroTool.h)
+#Hierarchical Face Clustering
+add_subdirectory(${PROJECT_SOURCE_DIR}/external/hierarchical-face-clustering)
+include_directories(${PROJECT_SOURCE_DIR}/external/hierarchical-face-clustering)
+
+# libigl
+set(LIBIGL_ROOT_DIR "/home/agalvan-admin/libigl")
+if(LIBIGL_ROOT_DIR)
+    include_directories("${LIBIGL_ROOT_DIR}/include")
+else()
+    message(FATAL_ERROR "Cannot find libigl at LIBIGL_ROOT")
+endif()
+
+add_library(cHeroTool cHeroTool.cpp cHeroTool.h cOBB.h)
 
 target_link_libraries(cHeroTool PUBLIC
         ${CHAI3D_LIBRARIES}
@@ -57,5 +70,5 @@ target_link_libraries(cHeroTool PUBLIC
 
 add_executable(example main.cpp)
 
-target_link_libraries(example PUBLIC cHeroTool)
+target_link_libraries(example PUBLIC cHeroTool HierarchicalFaceClustering)
 
