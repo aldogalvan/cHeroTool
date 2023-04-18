@@ -1,6 +1,6 @@
 
-#ifndef CHEROTOOL_COBB_H
-#define CHEROTOOL_COBB_H
+#ifndef CHEROTOOL_OBB_H
+#define CHEROTOOL_OBB_H
 
 #include "chai3d.h"
 #include <vector>
@@ -27,6 +27,11 @@ public:
     // constructor
     OBB(const cVector3d& position, const cMatrix3d& orientation, const cVector3d& dimensions)
             : m_position(position), m_orientation(orientation), m_dimensions(dimensions) {}
+
+    static OBB* createOBB(vector<cTriangleArrayPtr> triangles, vector<cVertexArrayPtr> vertices)
+    {
+
+    }
 
     // compute the vertices of the OBB
     std::vector<cVector3d> vertices() const {
@@ -229,4 +234,4 @@ static void computeTriangleMeshOBB(cMesh* mesh, OBB& obb, const std::vector<int>
 
 
 
-#endif //CHEROTOOL_COBB_H
+#endif //CHEROTOOL_OBB_H

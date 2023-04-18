@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.25)
-project(cHeroTool)
+project(ClusteredObjects)
 
 set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CUDA_ARCHITECTURES 61)
@@ -60,9 +60,9 @@ else()
     message(FATAL_ERROR "Cannot find libigl at LIBIGL_ROOT")
 endif()
 
-add_library(cHeroTool cHeroTool.cpp cHeroTool.h cOBB.h)
+add_library(ClusteredObjects src/ClusteredObjects.cpp src/ClusteredObjects.h src/OBB.h)
 
-target_link_libraries(cHeroTool PUBLIC
+target_link_libraries(ClusteredObjects PUBLIC
         ${CHAI3D_LIBRARIES}
         ${CHAI3D-GEL_LIBRARIES}
         ${CHAI3D-BULLET_LIBRARIES}
@@ -70,5 +70,5 @@ target_link_libraries(cHeroTool PUBLIC
 
 add_executable(example main.cpp)
 
-target_link_libraries(example PUBLIC cHeroTool HierarchicalFaceClustering)
+target_link_libraries(example PUBLIC ClusteredObjects HierarchicalFaceClustering)
 

@@ -1,5 +1,5 @@
 //------------------------------------------------------------------------------
-#include "cHeroTool.h"
+#include "src/ClusteredObjects.h"
 //------------------------------------------------------------------------------
 #include "extras/GLFW/include/GLFW/glfw3.h"
 //------------------------------------------------------------------------------
@@ -49,7 +49,7 @@ bool mirroredDisplay = false;
 cWorld* world;
 
 //
-cHeroTool* tool;
+hClusteredTool* tool;
 
 // a camera to render the world in the window display
 cCamera* camera;
@@ -324,11 +324,10 @@ int main(int argc, char* argv[])
     cHapticDeviceInfo info = hapticDevice->getSpecifications();
 
     // create the tool
-    tool = new cHeroTool(hapticDevice);
-    tool->clusterMesh();
+    tool = new hClusteredTool(hapticDevice);
+    tool->clusterMesh("/home/agalvan-admin/CLionProjects/ClusteredObjects/resources/longhorn2.obj");
     world->addChild(tool);
     tool->scale(0.01);
-
 
     //--------------------------------------------------------------------------
     // WIDGETS
