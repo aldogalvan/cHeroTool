@@ -62,10 +62,10 @@ public:
     double m_scaleFactor = 1;
 
     // the oriented boundng box tree
-    OBB* m_obbTree;
+    OBBPtr m_obbTree;
 
     // the axis aligned bounding box tree
-    AABB* m_aabbTree;
+    AABBPtr m_aabbTree;
 
 public:
 

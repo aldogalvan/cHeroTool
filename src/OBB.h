@@ -8,6 +8,8 @@
 using namespace chai3d;
 using namespace std;
 
+class OBB;
+typedef std::shared_ptr<OBB> OBBPtr;
 
 class OBB {
 

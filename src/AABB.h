@@ -2,6 +2,9 @@
 #ifndef CHEROTOOL_AXISALIGNEDBOUNDINGBOX_H
 #define CHEROTOOL_AXISALIGNEDBOUNDINGBOX_H
 
+class AABB;
+typedef std::shared_ptr<AABB> AABBPtr;
+
 class AABB
 {
 

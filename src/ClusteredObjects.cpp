@@ -15,10 +15,16 @@ void hClusteredObject::setScaleFactor(double a_scale)
     m_scaleFactor = a_scale;
 }
 
+void hClusteredObject::buildAABBTree()
+{
+    m_aabbTree = make_shared<AABB>();
+
+}
+
 void hClusteredObject::buildOBBTree()
 {
 
-    m_obbTree = new OBB(cVector3d(), cMatrix3d(), cVector3d() );
+    m_obbTree = make_shared<OBB>(OBB(cVector3d(), cMatrix3d(), cVector3d() ));
 
     // build the top level OBB
 
